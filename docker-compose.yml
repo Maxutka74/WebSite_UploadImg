@@ -1,0 +1,152 @@
+version: "3.9"
+
+services:
+
+  web:
+    container_name: upload-server
+    restart: always
+
+    build:
+      context: ./services/backend
+      dockerfile: Dockerfile
+
+    command: >
+      uvicorn src.app:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+
+
+    env_file:
+      - ./services/backend/.env
+      - ./services/pgbouncer/.env
+
+    environment:
+      LOG_LEVEL: debug
+      PYTHONUNBUFFERED: "1"
+
+      PYTHONPATH: /usr/src/upload-server
+
+      POSTGRES_HOST: db
+      POSTGRES_DB_PORT: 5432
+
+      PGBOUNCER_HOST: pgbouncer
+      PGBOUNCER_PORT: 6432
+
+
+    volumes:
+      - ./services/backend/src:/usr/src/upload-server/src
+      - ./images:/usr/src/images
+      - ./logs:/usr/src/logs
+
+    ports:
+      - "8000:8000"
+
+    depends_on:
+      db:
+        condition: service_healthy
+      pgbouncer:
+        condition: service_started
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+    networks:
+      - upload-server-network
+
+
+  nginx:
+    image: nginx:stable-alpine
+    container_name: upload-nginx
+    restart: always
+
+    ports:
+      - "80:80"
+
+    volumes:
+      - ./images:/usr/src/images:ro
+      - ./logs/nginx:/var/log/nginx
+      - ./services/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./services/frontend:/usr/share/nginx/html:ro
+
+    depends_on:
+      web:
+        condition: service_healthy
+
+    networks:
+      - upload-server-network
+
+
+  db:
+    image: postgres:17.4
+    container_name: postgres-upload-server
+    restart: unless-stopped
+
+    env_file:
+      - ./services/backend/.env
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - ./init-sql:/docker-entrypoint-initdb.d
+      - postgres_upload_server_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+    networks:
+      - upload-server-network
+
+
+  pgbouncer:
+    container_name: pgbouncer-upload-server
+    restart: always
+
+    build:
+      context: ./services/pgbouncer
+      dockerfile: Dockerfile
+
+    env_file:
+      - ./services/backend/.env
+      - ./services/pgbouncer/.env
+
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB_PORT: 5432
+
+    ports:
+      - "6432:6432"
+
+    volumes:
+      - ./logs/pgbouncer:/var/log/pgbouncer
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${PGBOUNCER_USER} -d $${POSTGRES_DB} -h 127.0.0.1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+    networks:
+      - upload-server-network
+
+
+networks:
+  upload-server-network:
+    driver: bridge
+
+
+volumes:
+  postgres_upload_server_data:
+    driver: local

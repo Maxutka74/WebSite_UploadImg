@@ -1,0 +1,50 @@
+set -e
+
+if [ -z "$PGBOUNCER_USER" ] || [ -z "$PGBOUNCER_PASSWORD" ]; then
+  echo "ERROR: PGBOUNCER_USER and PGBOUNCER_PASSWORD must be set."
+  exit 1
+
+fi
+
+echo "Creating userlist.txt file."
+USERLIST_FILE="/etc/pgbouncer/userlist.txt"
+
+
+generate_md5() {
+  local username="$1"
+  local password="$2"
+  echo -n "md5$(echo -n "${password}${username}" | md5sum | cut -d ' ' -f 1)"
+}
+
+echo "\"$PGBOUNCER_USER\" \"$(generate_md5 "$PGBOUNCER_USER" "$PGBOUNCER_PASSWORD")\"" > $USERLIST_FILE
+echo "Auth setup complete for user: $PGBOUNCER_USER"
+
+cat > /etc/pgbouncer/pgbouncer.ini << EOL
+[databases]
+* = host=${POSTGRES_HOST} port=${POSTGRES_DB_PORT:-5432} dbname=${POSTGRES_DB} user=${POSTGRES_USER} password=${POSTGRES_PASSWORD}
+
+[pgbouncer]
+logfile = /var/log/pgbouncer/pgbouncer.log
+pidfile = /var/run/pgbouncer/pgbouncer.pid
+listen_addr = *
+listen_port = 6432
+auth_type = md5
+auth_file = /etc/pgbouncer/userlist.txt
+admin_users = ${PGBOUNCER_USER}
+stats_users = ${PGBOUNCER_USER}
+pool_mode = transaction
+server_reset_query = DISCARD ALL
+max_client_conn = ${MAX_CLIENT_CONN:-200}
+default_pool_size = ${DEFAULT_POOL_SIZE:-20}
+ignore_startup_parameters = extra_float_digits
+EOL
+
+echo "PgBouncer configuration complete."
+
+mkdir -p /var/log/pgbouncer
+chown -R postgres:postgres /var/log/pgbouncer
+
+mkdir -p /var/run/pgbouncer
+chown -R postgres:postgres /var/run/pgbouncer
+
+exec "$@"
