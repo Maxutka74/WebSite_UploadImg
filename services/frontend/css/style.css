@@ -42,11 +42,12 @@ header {
 }
 
 .hero__image.is-visible {
-    display: block;
+    width: 700px;
+    display: flex;
+    justify-content: center;
 }
 
 .img {
-    width: 426px;
     height: 559px;
     object-fit: cover;
     background-clip: content-box;

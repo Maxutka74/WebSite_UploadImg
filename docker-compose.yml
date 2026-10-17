@@ -1,7 +1,6 @@
 version: "3.9"
 
 services:
-
   web:
     container_name: upload-server
     restart: always
@@ -10,12 +9,13 @@ services:
       context: ./services/backend
       dockerfile: Dockerfile
 
+    working_dir: /usr/src/upload-server
+
     command: >
       uvicorn src.app:app
       --host 0.0.0.0
       --port 8000
       --reload
-
 
     env_file:
       - ./services/backend/.env
@@ -24,7 +24,6 @@ services:
     environment:
       LOG_LEVEL: debug
       PYTHONUNBUFFERED: "1"
-
       PYTHONPATH: /usr/src/upload-server
 
       POSTGRES_HOST: db
@@ -32,7 +31,6 @@ services:
 
       PGBOUNCER_HOST: pgbouncer
       PGBOUNCER_PORT: 6432
-
 
     volumes:
       - ./services/backend/src:/usr/src/upload-server/src
@@ -43,20 +41,11 @@ services:
       - "8000:8000"
 
     depends_on:
-      db:
-        condition: service_healthy
-      pgbouncer:
-        condition: service_started
-
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      - db
+      - pgbouncer
 
     networks:
       - upload-server-network
-
 
   nginx:
     image: nginx:stable-alpine
@@ -73,12 +62,10 @@ services:
       - ./services/frontend:/usr/share/nginx/html:ro
 
     depends_on:
-      web:
-        condition: service_healthy
+      - web
 
     networks:
       - upload-server-network
-
 
   db:
     image: postgres:17.4
@@ -95,16 +82,8 @@ services:
       - ./init-sql:/docker-entrypoint-initdb.d
       - postgres_upload_server_data:/var/lib/postgresql/data
 
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} -h 127.0.0.1 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 20s
-
     networks:
       - upload-server-network
-
 
   pgbouncer:
     container_name: pgbouncer-upload-server
@@ -129,23 +108,14 @@ services:
       - ./logs/pgbouncer:/var/log/pgbouncer
 
     depends_on:
-      db:
-        condition: service_healthy
-
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${PGBOUNCER_USER} -d $${POSTGRES_DB} -h 127.0.0.1 || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
+      - db
 
     networks:
       - upload-server-network
 
-
 networks:
   upload-server-network:
     driver: bridge
-
 
 volumes:
   postgres_upload_server_data:
