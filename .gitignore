@@ -220,7 +220,3 @@ services/backend/.env
 myenv/
 
 *.img
-
-*.gif
-
-*.png
