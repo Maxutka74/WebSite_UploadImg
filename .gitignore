@@ -215,7 +215,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-services/backend/.env
+.env
 
 myenv/
 
